@@ -3,6 +3,8 @@ context: hashitalk.okteto.dev
 deploy:
   image: irespaldiza/tfenv:0.1
   commands:
+    - name: tfenv
+      command: tfenv install min-required && tfenv use min-required
     - name: terraform
       command: terraform init -backend-config=namespace=irespaldiza -backend-config=config_path=$KUBECONFIG   && terraform apply --auto-approve -var="name=$OKTETO_NAMESPACE" -var="kubeconfig=$KUBECONFIG"
     - name: builds
