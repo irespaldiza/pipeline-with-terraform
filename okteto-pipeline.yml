@@ -1,24 +1,22 @@
 icon: https://github.com/okteto/pipeline-with-terraform/raw/main/icon.png
+context: hashitalk.okteto.dev
 deploy:
-  - tfenv install min-required
-  - tfenv use min-required
-  - envsubst < template/terraform.auto.tfvars.tpl > terraform.auto.tfvars
-  - echo ${GCP_CREDENTIALS} | base64 -d > credentials.json
-  - terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=pub-sub" -backend-config="credentials=credentials.json"
-  - terraform workspace ${OKTETO_NAMESPACE}
-  - terraform apply --auto-approve
-  - okteto build -t okteto.dev/pub:${OKTETO_GIT_COMMIT} pub
-  - okteto build -t okteto.dev/sub:${OKTETO_GIT_COMMIT} sub
-  - mv credentials.json k8s/credentials.json
-  - cd k8s && kustomize edit set image pub=okteto.dev/pub:${OKTETO_GIT_COMMIT}
-  - cd k8s && kustomize edit set image sub=okteto.dev/sub:${OKTETO_GIT_COMMIT}
-  - cd k8s && kustomize edit add secret gcp-config --from-literal=pubsub-topic=topic-${OKTETO_NAMESPACE} --from-literal=gcp-project-id=${GCP_PROJECT_ID}
-  - kubectl apply -k k8s
+  image: irespaldiza/tfenv:0.1
+  commands:
+    - name: terraform
+      command: terraform init -backend-config=namespace=irespaldiza -backend-config=config_path=$KUBECONFIG   && terraform apply --auto-approve -var="name=$OKTETO_NAMESPACE" -var="kubeconfig=$KUBECONFIG"
+    - name: builds
+      command: okteto build -t okteto.dev/pub:${OKTETO_GIT_COMMIT} pub && okteto build -t okteto.dev/sub:${OKTETO_GIT_COMMIT} sub
+    - name: kustomize
+      command: cd k8s && kustomize edit set image pub=okteto.dev/pub:${OKTETO_GIT_COMMIT} && kustomize edit set image sub=okteto.dev/sub:${OKTETO_GIT_COMMIT} && kustomize edit add secret gcp-config --from-literal=pubsub-topic=topic-${OKTETO_NAMESPACE} --from-literal=gcp-project-id=${TF_VAR_gcpProject}
+    - name: apply
+      command: kubectl apply -k k8s
+
 destroy:
-  - tfenv install min-required
-  - tfenv use min-required
-  - envsubst < template/terraform.auto.tfvars.tpl > terraform.auto.tfvars
-  - echo ${GCP_CREDENTIALS} | base64 -d > credentials.json
-  - terraform init -backend-config="bucket=${BUCKET}" -backend-config="prefix=pub-sub" -backend-config="credentials=credentials.json"
-  - terraform workspace ${OKTETO_NAMESPACE}
-  - terraform destroy --auto-approve
+  image: irespaldiza/tfenv:0.1
+  commands:
+    - name: tfenv
+      command: tfenv install min-required && tfenv use min-required
+    - name: terraform
+      command: terraform init -backend-config=namespace=irespaldiza -backend-config=config_path=$KUBECONFIG   && terraform destroy --auto-approve -var="name=$OKTETO_NAMESPACE" -var="kubeconfig=$KUBECONFIG"
+    - name: builds

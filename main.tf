@@ -1,5 +1,6 @@
 terraform {
-  backend "gcs" {
+  backend "kubernetes" {
+    secret_suffix = "okteto"
   }
   required_providers {
     google = {
@@ -7,31 +8,65 @@ terraform {
       version = ">= 4.5.0"
     }
   }
-  required_version = ">= 1.1.2"
+  required_version = ">= 1.5.4"
 }
 provider "google" {
-  credentials = base64decode(var.credentials)
-  project     = local.credentials.project_id
+  project = var.gcpProject
 }
+
+provider "kubernetes" {
+  config_path = var.kubeconfig
+}
+
 
 resource "google_pubsub_topic" "this" {
   name = format("topic-%s", var.name)
 }
 
-locals {
-  credentials = jsondecode(base64decode(var.credentials))
+resource "google_service_account" "this" {
+  project      = var.gcpProject
+  account_id   = format("%spubsub", var.name)
+  display_name = format("%spubsub", var.name)
 }
 
-variable "credentials" {
-  type        = string
-  description = "google cloud credentials"
+resource "google_project_iam_binding" "this" {
+  role    = "roles/pubsub.editor"
+  project = var.gcpProject
+  members = ["serviceAccount:${google_service_account.this.email}"]
+}
+
+resource "google_service_account_key" "this" {
+  service_account_id = google_service_account.this.name
 }
 
 variable "name" {
   type        = string
   description = "pubsub topic name"
+  default     = null
+}
+variable "gcpProject" {
+  type        = string
+  description = "GCP project"
+  default     = null
 }
 
-output "topicID" {
-  value = google_pubsub_topic.this.id
+variable "kubeconfig" {
+  type        = string
+  description = "kubernetes kubeconfig file path"
+  default     = null
+}
+
+resource "local_file" "this" {
+  content  = base64decode(google_service_account_key.this.private_key)
+  filename = "k8s/credentials.json"
+}
+
+resource "kubernetes_secret" "this" {
+  metadata {
+    name      = "gcp-credentials"
+    namespace = var.name
+  }
+  data = {
+    "credentials.json" = base64decode(google_service_account_key.this.private_key)
+  }
 }
